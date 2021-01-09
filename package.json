@@ -1,0 +1,26 @@
+{
+  "name": "intake-form-google-script",
+  "version": "1.0.0",
+  "description": "Google Apps Script code for Ward 4 Mutual Aid Intake Form",
+  "main": "macros.js",
+  "dependencies": {},
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^4.12.0",
+    "@typescript-eslint/parser": "^4.12.0",
+    "eslint": "^7.17.0",
+    "prettier": "^2.2.1"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ajtmccarty/intake-form-google-script.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ajtmccarty/intake-form-google-script/issues"
+  },
+  "homepage": "https://github.com/ajtmccarty/intake-form-google-script#readme"
+}

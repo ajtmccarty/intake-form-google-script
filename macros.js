@@ -7,9 +7,9 @@ function onOpen() {
   ui.createMenu("Automation")
     .addItem("Post-delivery automation", "startUpMessage")
     .addToUi();
-  //  ui.createMenu("Clustering")
-  //      .addItem("Sort Rows by Priority", "prioritizeRows")
-  //      .addToUi();
+  ui.createMenu("Clustering")
+    .addItem("Sort Rows by Priority", "prioritizeRows")
+    .addToUi();
 }
 
 function startUpMessage() {
@@ -146,7 +146,7 @@ function ddAutomation() {
 
   //if DD sheet status is set to delivered, changes status to delivered in New Intake, deletes from NI and D tab and copies to closed/completed
   for (
-    d = 1;
+    var d = 1;
     d < spreadsheet.getSheetByName(SHEET.deliveries).getLastRow();
     d++
   ) {
@@ -178,7 +178,7 @@ function ddAutomation() {
   }
 
   for (
-    n = 1;
+    var n = 1;
     n < spreadsheet.getsheetbyname(SHEET.intakeForm).getLastRow();
     n++
   ) {
@@ -320,7 +320,7 @@ function isRowUrgent(row) {
 function setDateForRows(rows) {
   const dateIdx = getColumnIdx(COLUMN.date);
   const timeIdx = getColumnIdx(COLUMN.time);
-  for (r of rows) {
+  for (var r of rows) {
     var dateVal = r[dateIdx];
     var timeVal = r[timeIdx];
     if (!dateVal || !timeVal) {

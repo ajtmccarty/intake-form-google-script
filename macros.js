@@ -7,9 +7,10 @@ function onOpen() {
   ui.createMenu("Automation")
     .addItem("Post-delivery automation", "startUpMessage")
     .addToUi();
-  ui.createMenu("Clustering")
+  ui.createMenu("Delivery Clustering")
     .addItem("Sort Delivery Rows by Priority (~3min)", "prioritizeRows")
     .addItem("Geocode Delivery Addresses", "geocode")
+    .addItem("Cluster First 45 Delivery Rows", "clusterAddresses")
     .addToUi();
 }
 
@@ -23,6 +24,10 @@ function startUpMessage() {
     ddAutomation();
   }
 }
+
+// URL for AWS Lambda clustering service
+const CLUSTERING_SERVICE_URL =
+  "https://6t2mrznt84.execute-api.us-east-2.amazonaws.com/default/clusterAddresses";
 
 // Names of tabs we care about.
 const SHEET = {
@@ -258,7 +263,12 @@ function getColumnIdx(columnName, sheetName = null) {
   if (sheetName === null) {
     sheetName = SHEET.deliveries;
   }
-  return getHeaderRow(sheetName).indexOf(columnName);
+  const idx = getHeaderRow(sheetName).indexOf(columnName);
+  // If no UID column, assume it is the first column
+  if (idx == -1 && columnName == DELIVERY_COLUMNS.uid) {
+    return 0;
+  }
+  return idx;
 }
 
 function addColumns(columnNames, hidden = false) {
@@ -454,4 +464,71 @@ function geocode() {
     Logger.log(addr, " --> ", lat, ", ", lon);
     addGeocodedAddr(addr, lat, lon);
   }
+}
+
+function clusterAddresses(numberOfRows = 45) {
+  var deliveriesSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(
+    SHEET.deliveries
+  );
+  const rows = deliveriesSheet
+    .getRange(2, 1, numberOfRows, deliveriesSheet.getLastColumn())
+    .getValues();
+  let geocodedAddrsMap = getGeocodedAddrs();
+  const payload = prepareClusteringPayload(rows, geocodedAddrsMap);
+  Logger.log("Clustering Payload: ", payload);
+  const options = {
+    method: "post",
+    contentType: "application/json",
+    payload: JSON.stringify(payload),
+  };
+  let response = UrlFetchApp.fetch(CLUSTERING_SERVICE_URL, options);
+  var responseData = JSON.parse(response.getContentText());
+  updateRowsWithClusters(responseData);
+}
+
+function prepareClusteringPayload(rows, geocodingMap) {
+  const uidIdx = getColumnIdx(DELIVERY_COLUMNS.uid, SHEET.deliveries);
+  const addrIdx = getColumnIdx(DELIVERY_COLUMNS.address, SHEET.deliveries);
+  let payload = [];
+  for (var r of rows) {
+    let uid = r[uidIdx];
+    let addr = r[addrIdx];
+    if (uid && addr && addr in geocodingMap) {
+      payload.push({
+        _id: uid,
+        coords: geocodingMap[addr],
+      });
+    }
+  }
+  return payload;
+}
+
+function updateRowsWithClusters(clusterData) {
+  var deliveriesSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(
+    SHEET.deliveries
+  );
+  const uidIdx = getColumnIdx(DELIVERY_COLUMNS.uid, SHEET.deliveries);
+  const clusterIdx = getColumnIdx(DELIVERY_COLUMNS.cluster, SHEET.deliveries);
+  var range = deliveriesSheet.getRange(
+    2,
+    1,
+    deliveriesSheet.getLastRow(),
+    deliveriesSheet.getLastColumn()
+  );
+  var sheetValues = range.getValues();
+  for (var rowWithCluster of clusterData) {
+    if (!rowWithCluster["_id"] || !rowWithCluster["cluster"]) {
+      continue;
+    }
+    let uid = rowWithCluster["_id"];
+    let cluster = rowWithCluster["cluster"];
+    for (var sheetRow of sheetValues) {
+      if (sheetRow[uidIdx] != uid) {
+        continue;
+      }
+      sheetRow[clusterIdx] = cluster;
+      break;
+    }
+  }
+  range.setValues(sheetValues);
 }

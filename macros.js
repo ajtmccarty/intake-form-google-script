@@ -1,6 +1,6 @@
 function onOpen() {
   var ui = SpreadsheetApp.getUi();
-  //  addColumns([COLUMN.latitude, COLUMN.longitude, COLUMN.cluster], true);
+  //  addColumns([DELIVERY_COLUMNS.latitude, DELIVERY_COLUMNS.longitude, DELIVERY_COLUMNS.cluster], true);
   ui.alert(
     'READ THIS MESSAGE BEFORE EDITING! \n There is a new AUTOMATED data system that sorts data into the DELIVERY tab when their STATUS is changed. \n NEEDS URGENT is no longer a status, it is a check box you will find in the row. \n Please fill in ALL other information for an order before changing the status column. \n If you change status to "pending delivery", that row will automatically be copied into those tabs. \n However, any changes made to the row in the new intake form after that WILL NOT be reflected in the pickup or delivery tabs. \n That is why its important to change the status after filling in ALL other information. Otherwise, please go and update information in the other tabs as well. Thank you!'
   );
@@ -8,7 +8,8 @@ function onOpen() {
     .addItem("Post-delivery automation", "startUpMessage")
     .addToUi();
   ui.createMenu("Clustering")
-    .addItem("Sort Rows by Priority", "prioritizeRows")
+    .addItem("Sort Delivery Rows by Priority (~3min)", "prioritizeRows")
+    .addItem("Geocode Delivery Addresses", "geocode")
     .addToUi();
 }
 
@@ -28,20 +29,25 @@ const SHEET = {
   intakeForm: "Intake Form",
   deliveries: "Deliveries",
   closedCompleted: "Closed/Completed",
+  geocoding: "Geocoding",
 };
 
 // Names of columns we care about.
-const COLUMN = {
+const DELIVERY_COLUMNS = {
   address: "Address",
   cluster: "Cluster",
   dateCompleted: "Date Delivered",
   date: "Date",
-  latitude: "Lat",
-  longitude: "Lon",
   status: "Status",
   time: "Time",
   uid: "UID",
   urgent: "Needs Urgent?",
+};
+
+const GEOCODING_COLUMNS = {
+  address: "addresskey",
+  latitude: "latitude",
+  longitude: "longitude",
 };
 
 // Names of statuses we care about.
@@ -81,7 +87,7 @@ function onEdit(event) {
   }
 
   //Abort if this is not the status column.
-  if (cellC != getColIndex(COLUMN.status)) {
+  if (cellC != getColIndex(DELIVERY_COLUMNS.status)) {
     return;
   }
 
@@ -101,7 +107,7 @@ function onEdit(event) {
     if (cellValue == STATUS.closed) {
       SpreadsheetApp.getActiveSpreadsheet()
         .getSheetByName(SHEET.intakeForm)
-        .getRange(cellR, getColIndex(COLUMN.dateCompleted))
+        .getRange(cellR, getColIndex(DELIVERY_COLUMNS.dateCompleted))
         .setValue(new Date());
       SpreadsheetApp.getActiveSpreadsheet()
         .getSheetByName(SHEET.closedCompleted)
@@ -116,12 +122,12 @@ function onEdit(event) {
 
 //if DD sheet status is set to delivered, changes status to delivered in New Intake and thus triggers moving it to the closed/completed tab
 //if(sheet.getName() == SHEET.deliveries){
-//  //if(cellC == getColIndex(COLUMN.status)){
+//  //if(cellC == getColIndex(DELIVERY_COLUMNS.status)){
 //    if(cellValue == STATUS.delivered){
 //     for(y=1; y < SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET.intakeForm).getLastRow(); y++){
 //       if(sheet.getRange(cellR, 1).getValue() == SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET.intakeForm).getRange(y, 1).getValue()){
-//        SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET.intakeForm).getRange(y, getColIndex(COLUMN.status)).setValue('Delivered');
-//        SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET.intakeForm).getRange(y, getColIndex(COLUMN.dateCompleted)).setValue(new Date());
+//        SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET.intakeForm).getRange(y, getColIndex(DELIVERY_COLUMNS.status)).setValue('Delivered');
+//        SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET.intakeForm).getRange(y, getColIndex(DELIVERY_COLUMNS.dateCompleted)).setValue(new Date());
 //        SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET.closedCompleted).appendRow(SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET.intakeForm).getRange(y, 1, 1, 50).getValues()[0]);
 //        SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET.intakeForm).deleteRow(y);
 //        sheet.deleteRow(cellR);
@@ -210,8 +216,8 @@ function ddAutomation() {
 //
 //     for(y=1; y < SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET.intakeForm).getLastRow(); y++){
 //       if(sheet.getRange(cellR, 1).getValue() == SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET.intakeForm).getRange(y, 1).getValue()){
-//        SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET.intakeForm).getRange(y, getColIndex(COLUMN.status)).setValue('Delivered');
-//        SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET.intakeForm).getRange(y, getColIndex(COLUMN.dateCompleted)).setValue(new Date());
+//        SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET.intakeForm).getRange(y, getColIndex(DELIVERY_COLUMNS.status)).setValue('Delivered');
+//        SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET.intakeForm).getRange(y, getColIndex(DELIVERY_COLUMNS.dateCompleted)).setValue(new Date());
 //        SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET.closedCompleted).appendRow(SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET.intakeForm).getRange(y, 1, 1, 50).getValues()[0]);
 //        SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET.intakeForm).deleteRow(y);
 //        sheet.deleteRow(cellR);
@@ -243,15 +249,16 @@ function ddAutomation() {
 //    }
 //  }
 
-function getHeaderRow() {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(
-    SHEET.deliveries
-  );
+function getHeaderRow(sheetName) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
   return sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
 }
 
-function getColumnIdx(columnName) {
-  return getHeaderRow().indexOf(columnName);
+function getColumnIdx(columnName, sheetName = null) {
+  if (sheetName === null) {
+    sheetName = SHEET.deliveries;
+  }
+  return getHeaderRow(sheetName).indexOf(columnName);
 }
 
 function addColumns(columnNames, hidden = false) {
@@ -293,7 +300,7 @@ function rowsCompareFunction(row1, row2) {
   if (row2_is_urgent && !row1_is_urgent) {
     return 1;
   }
-  const dateIdx = getColumnIdx(COLUMN.date);
+  const dateIdx = getColumnIdx(DELIVERY_COLUMNS.date);
   let row1_timestamp = row1[dateIdx];
   let row2_timestamp = row2[dateIdx];
   if (isNaN(row1_timestamp)) {
@@ -306,7 +313,7 @@ function rowsCompareFunction(row1, row2) {
 }
 
 function isRowUrgent(row) {
-  const urgentIdx = getColumnIdx(COLUMN.urgent);
+  const urgentIdx = getColumnIdx(DELIVERY_COLUMNS.urgent);
   let val = row[urgentIdx];
   if (!val) {
     return false;
@@ -318,8 +325,8 @@ function isRowUrgent(row) {
 }
 
 function setDateForRows(rows) {
-  const dateIdx = getColumnIdx(COLUMN.date);
-  const timeIdx = getColumnIdx(COLUMN.time);
+  const dateIdx = getColumnIdx(DELIVERY_COLUMNS.date);
+  const timeIdx = getColumnIdx(DELIVERY_COLUMNS.time);
   for (var r of rows) {
     var dateVal = r[dateIdx];
     var timeVal = r[timeIdx];
@@ -332,5 +339,119 @@ function setDateForRows(rows) {
       timeVal.getMinutes(),
       timeVal.getSeconds()
     );
+  }
+}
+
+function getGeocodedAddrs() {
+  var geocodingSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(
+    SHEET.geocoding
+  );
+  const geocodeAddrIdx = getColumnIdx(
+    GEOCODING_COLUMNS.address,
+    SHEET.geocoding
+  );
+  const geocodeLatIdx = getColumnIdx(
+    GEOCODING_COLUMNS.latitude,
+    SHEET.geocoding
+  );
+  const geocodeLonIdx = getColumnIdx(
+    GEOCODING_COLUMNS.longitude,
+    SHEET.geocoding
+  );
+  const geocodeCells = geocodingSheet.getRange(
+    2,
+    1,
+    geocodingSheet.getLastRow(),
+    geocodingSheet.getLastColumn()
+  );
+  const geocodedNested = geocodeCells.getValues();
+  var geocodedAddrsMap = {};
+  for (var r of geocodedNested) {
+    const addr = r[geocodeAddrIdx];
+    const lat = r[geocodeLatIdx];
+    const lon = r[geocodeLonIdx];
+    if (addr && lat && lon) {
+      geocodedAddrsMap[addr] = [lat, lon];
+    }
+  }
+  return geocodedAddrsMap;
+}
+
+function addGeocodedAddr(addr, lat, lon) {
+  var geocodingSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(
+    SHEET.geocoding
+  );
+  const geocodeAddrIdx = getColumnIdx(
+    GEOCODING_COLUMNS.address,
+    SHEET.geocoding
+  );
+  const geocodeLatIdx = getColumnIdx(
+    GEOCODING_COLUMNS.latitude,
+    SHEET.geocoding
+  );
+  const geocodeLonIdx = getColumnIdx(
+    GEOCODING_COLUMNS.longitude,
+    SHEET.geocoding
+  );
+
+  let range = geocodingSheet.getRange(
+    geocodingSheet.getLastRow() + 1,
+    geocodeAddrIdx + 1
+  );
+  range.setValue(addr);
+  range = geocodingSheet.getRange(
+    geocodingSheet.getLastRow(),
+    geocodeLatIdx + 1
+  );
+  range.setValue(lat);
+  range = geocodingSheet.getRange(
+    geocodingSheet.getLastRow(),
+    geocodeLonIdx + 1
+  );
+  range.setValue(lon);
+}
+
+function geocode() {
+  var deliveriesSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(
+    SHEET.deliveries
+  );
+  const deliveryAddrIdx = getColumnIdx(
+    DELIVERY_COLUMNS.address,
+    SHEET.deliveries
+  );
+  let geocodedAddrsMap = getGeocodedAddrs();
+  let geocodedAddrs = Object.keys(geocodedAddrsMap);
+  var geocoder = Maps.newGeocoder().setBounds(
+    38.81604,
+    -77.14538,
+    39.00865,
+    -76.90918
+  );
+  for (let rowIdx = 2; rowIdx <= deliveriesSheet.getLastRow(); rowIdx++) {
+    const addr = deliveriesSheet
+      .getRange(rowIdx, deliveryAddrIdx + 1)
+      .getValue();
+    if (geocodedAddrs.includes(addr)) {
+      continue;
+    }
+    var resp = geocoder.geocode(addr);
+    if (resp.status_code !== "OK") {
+      Logger.log(
+        addr,
+        " failed to geocode. Error type: '",
+        resp.status_code,
+        "'. Error message: '",
+        resp.error_message,
+        "'"
+      );
+      continue;
+    }
+    var result = resp.results[0];
+    geocodedAddrs.push(addr);
+    const lat = result.geometry.location.lat;
+    const lon = result.geometry.location.lng;
+    geocodedAddrsMap[addr] = [lat, lon];
+    Logger.log(addr, " --> ", lat, ", ", lon);
+    addGeocodedAddr(addr, lat, lon);
   }
 }

@@ -441,11 +441,14 @@ function geocode() {
     const addr = deliveriesSheet
       .getRange(rowIdx, deliveryAddrIdx + 1)
       .getValue();
+    if (!addr) {
+      continue;
+    }
     if (geocodedAddrs.includes(addr)) {
       continue;
     }
     var resp = geocoder.geocode(addr);
-    if (resp.status_code !== "OK") {
+    if (resp.status !== "OK") {
       Logger.log(
         addr,
         " failed to geocode. Error type: '",

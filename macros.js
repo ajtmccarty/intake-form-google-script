@@ -8,7 +8,7 @@ function onOpen() {
     .addItem("Post-delivery automation", "startUpMessage")
     .addToUi();
   ui.createMenu("Delivery Clustering")
-    .addItem("Sort Delivery Rows by Priority (~3min)", "prioritizeRows")
+    .addItem("Sort Delivery Rows by Priority", "prioritizeRows")
     .addItem("Geocode Delivery Addresses", "geocode")
     .addItem("Cluster First 45 Delivery Rows", "clusterAddresses")
     .addToUi();
@@ -294,62 +294,12 @@ function prioritizeRows() {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(
     SHEET.deliveries
   );
-  let range = sheet.getRange(2, 1, sheet.getLastRow(), sheet.getLastColumn());
-  let rows = range.getValues();
-  setDateForRows(rows);
-  let sortedRows = rows.sort(rowsCompareFunction);
-  range.setValues(sortedRows);
-}
-
-function rowsCompareFunction(row1, row2) {
-  let row1_is_urgent = isRowUrgent(row1);
-  let row2_is_urgent = isRowUrgent(row2);
-  if (row1_is_urgent && !row2_is_urgent) {
-    return -1;
-  }
-  if (row2_is_urgent && !row1_is_urgent) {
-    return 1;
-  }
-  const dateIdx = getColumnIdx(DELIVERY_COLUMNS.date);
-  let row1_timestamp = row1[dateIdx];
-  let row2_timestamp = row2[dateIdx];
-  if (isNaN(row1_timestamp)) {
-    return 1;
-  }
-  if (isNaN(row2_timestamp)) {
-    return -1;
-  }
-  return row1_timestamp - row2_timestamp;
-}
-
-function isRowUrgent(row) {
-  const urgentIdx = getColumnIdx(DELIVERY_COLUMNS.urgent);
-  let val = row[urgentIdx];
-  if (!val) {
-    return false;
-  }
-  if (["yes", "true", "1"].includes(val.toLowerCase())) {
-    return true;
-  }
-  return false;
-}
-
-function setDateForRows(rows) {
-  const dateIdx = getColumnIdx(DELIVERY_COLUMNS.date);
-  const timeIdx = getColumnIdx(DELIVERY_COLUMNS.time);
-  for (var r of rows) {
-    var dateVal = r[dateIdx];
-    var timeVal = r[timeIdx];
-    if (!dateVal || !timeVal) {
-      r[dateIdx] = Date.parse("12/31/2500");
-      continue;
-    }
-    r[dateIdx].setHours(
-      timeVal.getHours(),
-      timeVal.getMinutes(),
-      timeVal.getSeconds()
-    );
-  }
+  let range = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn());
+  range.sort([
+    { column: getColumnIdx(DELIVERY_COLUMNS.urgent) + 1, ascending: false },
+    { column: getColumnIdx(DELIVERY_COLUMNS.date) + 1, ascending: true },
+    { column: getColumnIdx(DELIVERY_COLUMNS.time) + 1, ascending: true },
+  ]);
 }
 
 function getGeocodedAddrs() {

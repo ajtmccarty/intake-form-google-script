@@ -132,7 +132,8 @@ class MultiSelectSheet {
 
       const colOptions = colVals
         .slice(1)
-        .map((val) => val.trim().toLowerCase());
+        .map((val) => val.trim().toLowerCase())
+        .filter((val) => val.length > 0);
       var data = {
         options: colOptions,
         colName: colName,

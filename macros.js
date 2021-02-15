@@ -11,6 +11,7 @@ const SHEET = {
   deliveries: "Deliveries",
   closedCompleted: "Closed/Completed",
   geocoding: "Geocoding",
+  multiSelects: "MultiSelects",
 };
 
 // Names of columns we care about.
@@ -62,6 +63,17 @@ function getColumnIdx(columnName, sheetName = null) {
   return idx;
 }
 
+function colIdxToLetter(value) {
+  // 0-indexed col to letter for column value up to 701
+  if (value < 26) {
+    return (value + 10).toString(36).toUpperCase();
+  }
+  var letters = "";
+  letters += (Math.floor(value / 26) + 9).toString(36);
+  letters += ((value % 26) + 10).toString(36);
+  return letters.toUpperCase();
+}
+
 function addColumns(columnNames, hidden = false) {
   var headers = getHeaderRow();
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(
@@ -85,8 +97,130 @@ function addColumns(columnNames, hidden = false) {
 */
 
 /*
+  MULTI-SELECT START
+*/
+class MultiSelectSheet {
+  constructor(mappingSheetName, delimiter = ", ") {
+    this.delimiter = delimiter;
+    var mappingSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(
+      mappingSheetName
+    );
+    this._multi_select_map = {};
+    for (let colIdx = 0; colIdx < mappingSheet.getLastColumn(); colIdx++) {
+      // colIdx+1 is to convert 0-index to 1-index
+      const colVals = mappingSheet
+        .getRange(1, colIdx + 1, mappingSheet.getLastRow())
+        .getValues()
+        .flat();
+      const header = colVals[0];
+      const splitHeader = header.split(".");
+      const sheetName = splitHeader[0];
+      const colName = splitHeader[1];
+      if (!colName || !sheetName) {
+        continue;
+      }
+      const sheetColIdx = getColumnIdx(colName, sheetName);
+      if (sheetColIdx === -1) {
+        const msg = `Could not find column '${colName}' on sheet '${sheetName}'`;
+        console.error(msg);
+        Logger.log(msg);
+        continue;
+      }
+      if (this._multi_select_map[sheetName] == undefined) {
+        this._multi_select_map[sheetName] = { by_name: {}, by_idx: {} };
+      }
+
+      const colOptions = colVals
+        .slice(1)
+        .map((val) => val.trim().toLowerCase());
+      var data = {
+        options: colOptions,
+        colName: colName,
+        colIdx: sheetColIdx,
+        colLetter: colIdxToLetter(sheetColIdx),
+      };
+      this._multi_select_map[sheetName]["by_name"][colName] = data;
+      this._multi_select_map[sheetName]["by_idx"][sheetColIdx] = data;
+    }
+    Logger.log(
+      `MultiSelect Validation config ${JSON.stringify(this._multi_select_map)}`
+    );
+  }
+
+  getColOptionsByName(sheetName, colName) {
+    // return null if this sheetName/colName combo is not found
+    if (sheetName in this._multi_select_map) {
+      if (colName in this._multi_select_map[sheetName]["by_name"]) {
+        return this._multi_select_map[sheetName]["by_name"][colName]["options"];
+      }
+    }
+    return null;
+  }
+
+  getColOptionsByIdx(sheetName, colIdx) {
+    // return null if this sheetName/colIdx combo is not found
+    const colIdxStr = String(colIdx);
+    if (sheetName in this._multi_select_map) {
+      if (colIdxStr in this._multi_select_map[sheetName]["by_idx"]) {
+        return this._multi_select_map[sheetName]["by_idx"][colIdxStr][
+          "options"
+        ];
+      }
+    }
+    return null;
+  }
+
+  isColumnTracked(sheetName, colName = null, colIdx = null) {
+    if (colName !== null) {
+      return Boolean(this.getColOptionsByName(sheetName, colName));
+    }
+    if (colIdx !== null) {
+      return Boolean(this.getColOptionsByIdx(sheetName, colIdx));
+    }
+    return false;
+  }
+
+  isSheetTracked(sheetName) {
+    return sheetName in this._multi_select_map;
+  }
+
+  setAllDataValidations() {
+    for (let sheetName in this._multi_select_map) {
+      let sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(
+        sheetName
+      );
+      for (let colIdxStr in this._multi_select_map[sheetName]["by_idx"]) {
+        const colLetter = this._multi_select_map[sheetName]["by_idx"][
+          colIdxStr
+        ]["colLetter"];
+        const a1Range = `${colLetter}:${colLetter}`;
+        let colRange = sheet.getRange(a1Range);
+        const allowedVals = this.getColOptionsByIdx(sheetName, colIdxStr);
+        let rule = SpreadsheetApp.newDataValidation()
+          .requireValueInList(allowedVals)
+          .build();
+        colRange.setDataValidation(rule);
+      }
+    }
+    // clear validations on the header row
+    for (let sheetName in this._multi_select_map) {
+      let sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(
+        sheetName
+      );
+      var headerRange = sheet.getRange(1, 1, 1, sheet.getLastColumn());
+      headerRange.clear({ validationsOnly: true });
+    }
+  }
+}
+/*
+  MULTI-SELECT END
+*/
+
+/*
  onOpen TRIGGER START
 */
+const multiSelectValidator = new MultiSelectSheet(SHEET.multiSelects);
+
 function onOpen() {
   var ui = SpreadsheetApp.getUi();
   //  addColumns([DELIVERY_COLUMNS.latitude, DELIVERY_COLUMNS.longitude, DELIVERY_COLUMNS.cluster], true);
@@ -101,6 +235,7 @@ function onOpen() {
     .addItem("Geocode Delivery Addresses", "geocode")
     .addItem("Cluster First 45 Delivery Rows", "clusterAddresses")
     .addToUi();
+  // multiSelectValidator.setAllDataValidations();
 }
 
 function startUpMessage() {
@@ -122,6 +257,7 @@ function startUpMessage() {
 */
 function onEdit(event) {
   statusChangeAutomation(event);
+  // multiSelectValidation(event);
 }
 
 function statusChangeAutomation(event) {
@@ -181,6 +317,37 @@ function statusChangeAutomation(event) {
         .deleteRows(cellR);
       return;
     }
+  }
+}
+
+function multiSelectValidation(e) {
+  if (e.range.getNumRows() !== 1 || e.range.getNumColumns() !== 1) {
+    // only care about single-cell edits
+    return;
+  }
+  const sheetName = e.range.getSheet().getName();
+  if (!multiSelectValidator.isSheetTracked(sheetName)) {
+    // only care about edits on particular sheets
+    return;
+  }
+  if (e.range.getRow() === 1) {
+    // don't care about header row
+    return;
+  }
+  // make it 0-indexed
+  const colIdx = e.range.getColumn() - 1;
+  const colOptions = multiSelectValidator.getColOptionsByIdx(sheetName, colIdx);
+  if (!colOptions) {
+    return;
+  }
+
+  const cell = SpreadsheetApp.getActiveSpreadsheet().getCurrentCell();
+  if (!e.value) {
+    cell.setValue("");
+  } else if (!e.oldValue) {
+    cell.setValue(value);
+  } else {
+    cell.setValue(`${e.oldValue}${multiSelectValidator.delimiter}${e.value}`);
   }
 }
 /*

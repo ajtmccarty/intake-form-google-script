@@ -190,6 +190,7 @@ class MultiSelectSheet {
       let sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(
         sheetName
       );
+      Logger.log(`Processing data validations for ${sheetName}`);
       for (let colIdxStr in this._multi_select_map[sheetName]["by_idx"]) {
         const colLetter = this._multi_select_map[sheetName]["by_idx"][
           colIdxStr
@@ -197,6 +198,7 @@ class MultiSelectSheet {
         const a1Range = `${colLetter}:${colLetter}`;
         let colRange = sheet.getRange(a1Range);
         const allowedVals = this.getColOptionsByIdx(sheetName, colIdxStr);
+        Logger.log(`Adding data validation to column ${colLetter}. Options ${allowedVals}`);
         let rule = SpreadsheetApp.newDataValidation()
           .requireValueInList(allowedVals)
           .build();
@@ -236,7 +238,7 @@ function onOpen() {
     .addItem("Geocode Delivery Addresses", "geocode")
     .addItem("Cluster First 45 Delivery Rows", "clusterAddresses")
     .addToUi();
-  // multiSelectValidator.setAllDataValidations();
+  multiSelectValidator.setAllDataValidations();
 }
 
 function startUpMessage() {

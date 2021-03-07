@@ -198,7 +198,9 @@ class MultiSelectSheet {
         const a1Range = `${colLetter}:${colLetter}`;
         let colRange = sheet.getRange(a1Range);
         const allowedVals = this.getColOptionsByIdx(sheetName, colIdxStr);
-        Logger.log(`Adding data validation to column ${colLetter}. Options ${allowedVals}`);
+        Logger.log(
+          `Adding data validation to column ${colLetter}. Options ${allowedVals}`
+        );
         let rule = SpreadsheetApp.newDataValidation()
           .requireValueInList(allowedVals)
           .build();
@@ -236,7 +238,7 @@ function onOpen() {
   ui.createMenu("Delivery Clustering")
     .addItem("Sort Delivery Rows by Priority", "prioritizeRows")
     .addItem("Geocode Delivery Addresses", "geocode")
-    .addItem("Cluster First 45 Delivery Rows", "clusterAddresses")
+    .addItem("Cluster Delivery Rows", "clusteringPrompt")
     .addToUi();
   multiSelectValidator.setAllDataValidations();
 }
@@ -512,6 +514,29 @@ function clusterAddresses(numberOfRows = 45) {
   let response = UrlFetchApp.fetch(CLUSTERING_SERVICE_URL, options);
   var responseData = JSON.parse(response.getContentText());
   updateRowsWithClusters(responseData);
+}
+
+function clusteringPrompt() {
+  var ui = SpreadsheetApp.getUi();
+  let numRows = NaN;
+
+  while (isNaN(numRows)) {
+    var result = ui.prompt(
+      "How many rows do you want to cluster?",
+      ui.ButtonSet.OK_CANCEL
+    );
+
+    var button = result.getSelectedButton();
+    var text = result.getResponseText();
+    if (button == ui.Button.OK) {
+      numRows = parseInt(text);
+      if (!isNaN(numRows) && numRows > 0) {
+        clusterAddresses(numRows);
+        return;
+      }
+    }
+    ui.alert("Please enter a positive, whole number.");
+  }
 }
 
 function prepareClusteringPayload(rows, geocodingMap) {

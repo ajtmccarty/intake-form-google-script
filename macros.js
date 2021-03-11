@@ -542,18 +542,28 @@ function clusteringPrompt() {
 function prepareClusteringPayload(rows, geocodingMap) {
   const uidIdx = getColumnIdx(DELIVERY_COLUMNS.uid, SHEET.deliveries);
   const addrIdx = getColumnIdx(DELIVERY_COLUMNS.address, SHEET.deliveries);
-  let payload = [];
+  const urgentIdx = getColumnIdx(DELIVERY_COLUMNS.urgent, SHEET.deliveries);
+  let points = [];
   for (var r of rows) {
     let uid = r[uidIdx];
     let addr = r[addrIdx];
+    let isUrgent = false;
+    if (r[urgentIdx] && r[urgentIdx].toLowerCase().trim() == "yes") {
+      isUrgent = true;
+    }
     if (uid && addr && addr in geocodingMap) {
-      payload.push({
+      points.push({
         _id: uid,
+        extra_data: {
+          is_urgent: isUrgent,
+        },
         coords: geocodingMap[addr],
       });
     }
   }
-  return payload;
+  return {
+    points: points,
+  };
 }
 
 function updateRowsWithClusters(clusterData) {

@@ -19,7 +19,7 @@ const DELIVERY_COLUMNS = {
   address: "Address",
   cluster: "Cluster",
   dateCompleted: "Date Delivered",
-  date: "Date",
+  date: "Date Requested",
   status: "Status",
   time: "Time",
   uid: "UID",
@@ -505,11 +505,12 @@ function clusterAddresses(numberOfRows = 45) {
     .getValues();
   let geocodedAddrsMap = getGeocodedAddrs();
   const payload = prepareClusteringPayload(rows, geocodedAddrsMap);
-  Logger.log("Clustering Payload: ", payload);
+  const serialPayload = JSON.stringify(payload);
+  Logger.log("Clustering Payload: ", serialPayload);
   const options = {
     method: "post",
     contentType: "application/json",
-    payload: JSON.stringify(payload),
+    payload: serialPayload
   };
   let response = UrlFetchApp.fetch(CLUSTERING_SERVICE_URL, options);
   var responseData = JSON.parse(response.getContentText());
@@ -555,15 +556,15 @@ function prepareClusteringPayload(rows, geocodingMap) {
       points.push({
         _id: uid,
         extra_data: {
-          is_urgent: isUrgent,
+          is_urgent: isUrgent
         },
         coords: geocodingMap[addr],
       });
     }
   }
   return {
-    points: points,
-  };
+    "points": points
+  }
 }
 
 function updateRowsWithClusters(clusterData) {
